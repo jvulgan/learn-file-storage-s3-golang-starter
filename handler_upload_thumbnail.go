@@ -1,10 +1,12 @@
 package main
 
 import (
-	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
@@ -42,11 +44,6 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	defer file.Close()
 
 	mediaType := header.Header.Get("Content-Type")
-	data, err := io.ReadAll(file)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Failed to read the file data", err)
-		return
-	}
 
 	video, err := cfg.db.GetVideo(videoID)
 	if err != nil {
@@ -58,8 +55,25 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	tnEncoded := base64.StdEncoding.EncodeToString(data)
-	tnUrl := fmt.Sprintf("data:%s;base64,%s", mediaType, tnEncoded)
+	fileExt, ok := strings.CutPrefix(mediaType, "image/")
+	if !ok {
+		respondWithError(w, http.StatusBadRequest, "Thumbnal must be an image", nil)
+		return
+	}
+
+	path := filepath.Join(cfg.assetsRoot, fmt.Sprintf("%s.%s", videoIDString, fileExt))
+	f, err := os.Create(path)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't create thumbnail file", err)
+		return
+	}
+	_, err = io.Copy(f, file)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't copy contents of thumbnail file", err)
+		return
+	}
+
+	tnUrl := fmt.Sprintf("http://localhost:%s/assets/%s.%s", cfg.port, videoIDString, fileExt)
 	video.ThumbnailURL = &tnUrl
 	if err := cfg.db.UpdateVideo(video); err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Failed to update database record", err)
