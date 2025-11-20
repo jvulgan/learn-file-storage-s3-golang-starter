@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"mime"
@@ -65,7 +67,13 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 	fileExt, _ := strings.CutPrefix(mediaType, "image/")
 
-	path := filepath.Join(cfg.assetsRoot, fmt.Sprintf("%s.%s", videoIDString, fileExt))
+	b := make([]byte, 32)
+	rand.Read(b)
+	randStr := base64.RawURLEncoding.EncodeToString(b)
+	fmt.Println(randStr)
+	thumbFilepath := fmt.Sprintf("%s.%s", randStr, fileExt)
+	fmt.Println(thumbFilepath)
+	path := filepath.Join(cfg.assetsRoot, thumbFilepath)
 	f, err := os.Create(path)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't create thumbnail file", err)
@@ -77,7 +85,7 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	tnUrl := fmt.Sprintf("http://localhost:%s/assets/%s.%s", cfg.port, videoIDString, fileExt)
+	tnUrl := fmt.Sprintf("http://localhost:%s/assets/%s", cfg.port, thumbFilepath)
 	video.ThumbnailURL = &tnUrl
 	if err := cfg.db.UpdateVideo(video); err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Failed to update database record", err)
