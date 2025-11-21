@@ -1,14 +1,18 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"mime"
 	"net/http"
 	"os"
+	"os/exec"
+	"path"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
@@ -82,10 +86,25 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	// reset tmpFile pointer to the beginning
 	tmpFile.Seek(0, io.SeekStart)
 
+	dir := ""
+	aspectRatio, err := getVideoAspectRatio(tmpFile.Name())
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error determining video aspect ratio", err)
+		return
+	}
+	switch aspectRatio {
+	case "16:9":
+		dir = "landscape"
+	case "9:16":
+		dir = "portrait"
+	default:
+		dir = "other"
+	}
+
 	b := make([]byte, 32)
 	rand.Read(b)
 	randStr := base64.RawURLEncoding.EncodeToString(b)
-	videoKey := fmt.Sprintf("%s.mp4", randStr)
+	videoKey := path.Join(dir, fmt.Sprintf("%s.mp4", randStr))
 	if _, err := cfg.s3Client.PutObject(
 		context.Background(),
 		&s3.PutObjectInput{
@@ -108,4 +127,37 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 
 	fmt.Println("done uploading video by user", userID)
 	respondWithJSON(w, http.StatusOK, video)
+}
+
+func getVideoAspectRatio(filePath string) (string, error) {
+	cmd := exec.Command(
+		"ffprobe", "-v", "error", "-print_format", "json", "-show_streams", filePath)
+	buf := bytes.Buffer{}
+	cmd.Stdout = &buf
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("ffprobe error: %v", err)
+	}
+
+	type ffProbeOut struct {
+		Streams []struct {
+			Width  int `json:"width"`
+			Height int `json:"height"`
+		} `json:"streams"`
+	}
+
+	var out ffProbeOut
+	if err := json.Unmarshal(buf.Bytes(), &out); err != nil {
+		return "", fmt.Errorf("could not parse ffprobe output: %v", err)
+	}
+	if len(out.Streams) == 0 {
+		return "", fmt.Errorf("no video streams found")
+	}
+	w := out.Streams[0].Width
+	h := out.Streams[0].Height
+	if w == 16*h/9 {
+		return "16:9", nil
+	} else if h == 16*w/9 {
+		return "9:16", nil
+	}
+	return "other", nil
 }
