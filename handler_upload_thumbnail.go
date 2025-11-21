@@ -70,9 +70,7 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	b := make([]byte, 32)
 	rand.Read(b)
 	randStr := base64.RawURLEncoding.EncodeToString(b)
-	fmt.Println(randStr)
 	thumbFilepath := fmt.Sprintf("%s.%s", randStr, fileExt)
-	fmt.Println(thumbFilepath)
 	path := filepath.Join(cfg.assetsRoot, thumbFilepath)
 	f, err := os.Create(path)
 	if err != nil {
@@ -92,5 +90,6 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	fmt.Println("done uploading thumbnail for video", videoID, "by user", userID)
 	respondWithJSON(w, http.StatusOK, video)
 }
