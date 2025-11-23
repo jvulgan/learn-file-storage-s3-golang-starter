@@ -13,9 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
-	"time"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
@@ -106,11 +104,7 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	b := make([]byte, 32)
 	rand.Read(b)
 	randStr := base64.RawURLEncoding.EncodeToString(b)
-	videoKey := fmt.Sprintf(
-		"%s,%s",
-		cfg.s3Bucket,
-		path.Join(dir, fmt.Sprintf("%s.mp4", randStr)),
-	)
+	videoKey := path.Join(dir, fmt.Sprintf("%s.mp4", randStr))
 
 	processedPath, err := processVideoForFastStart(tmpFile.Name())
 	if err != nil {
@@ -138,19 +132,14 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	video.VideoURL = &videoKey
+	vidUrl := fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", cfg.s3Bucket, cfg.s3Region, videoKey)
+	video.VideoURL = &vidUrl
 	if err := cfg.db.UpdateVideo(video); err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Failed to update database record", err)
 		return
 	}
 
 	fmt.Println("done uploading video by user", userID)
-
-	video, err = cfg.dbVideoToSignedVideo(video)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Failed to generate signed URL for video", err)
-		return
-	}
 	respondWithJSON(w, http.StatusOK, video)
 }
 
@@ -196,24 +185,4 @@ func processVideoForFastStart(filePath string) (string, error) {
 		return "", fmt.Errorf("ffmpeg error: %v", err)
 	}
 	return outFilePath, nil
-}
-
-func generatePresignedURL(
-	s3Client *s3.Client,
-	bucket, key string,
-	expireTime time.Duration) (string, error) {
-	c := s3.NewPresignClient(s3Client)
-	presignedReq, err := c.PresignGetObject(
-		context.Background(),
-		&s3.GetObjectInput{
-			Bucket: aws.String(bucket),
-			Key:    aws.String(key),
-		},
-		s3.WithPresignExpires(expireTime),
-	)
-	if err != nil {
-		return "", fmt.Errorf("error getting presign obj: %v", err)
-	}
-	return presignedReq.URL, nil
-
 }
