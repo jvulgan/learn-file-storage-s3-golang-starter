@@ -95,6 +95,12 @@ func (cfg *apiConfig) handlerVideoGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	video, err = cfg.dbVideoToSignedVideo(video)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Failed to generate signed URL for video", err)
+		return
+	}
+
 	respondWithJSON(w, http.StatusOK, video)
 }
 
@@ -116,5 +122,15 @@ func (cfg *apiConfig) handlerVideosRetrieve(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	respondWithJSON(w, http.StatusOK, videos)
+	var transformed_vids []database.Video
+	for _, v := range videos {
+		vid, err := cfg.dbVideoToSignedVideo(v)
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, "Failed to generate signed URL for video", err)
+			return
+		}
+		transformed_vids = append(transformed_vids, vid)
+	}
+
+	respondWithJSON(w, http.StatusOK, transformed_vids)
 }
